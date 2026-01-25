@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Visual RAG Playground</title>
+
+  <!-- =========================
+       BASIC RESET + THEME
+       ========================= -->
+  <style>
+    * {
+      box-sizing: border-box;
+      font-family: Inter, system-ui, sans-serif;
+    }
+
+    body {
+      margin: 0;
+      background: #0f172a;
+      color: #e5e7eb;
+    }
+
+    h1, h2 {
+      margin-bottom: 8px;
+    }
+
+    p {
+      opacity: 0.85;
+      margin-top: 0;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: auto;
+      padding: 24px;
+    }
+
+    /* =========================
+       PIPELINE LAYOUT
+       ========================= */
+    .pipeline {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 16px;
+      margin-top: 24px;
+    }
+
+    .step {
+      background: #020617;
+      border-radius: 12px;
+      padding: 16px;
+      min-height: 260px;
+      position: relative;
+      border: 1px solid #1e293b;
+    }
+
+    .step.active {
+      outline: 2px solid #38bdf8;
+    }
+
+    .step-title {
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+
+    .progress {
+      height: 6px;
+      background: #1e293b;
+      border-radius: 999px;
+      overflow: hidden;
+      margin-bottom: 12px;
+    }
+
+    .progress-bar {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #38bdf8, #22d3ee);
+      transition: width 0.5s ease;
+    }
+
+    textarea, input {
+      width: 100%;
+      background: #020617;
+      color: #e5e7eb;
+      border: 1px solid #1e293b;
+      border-radius: 8px;
+      padding: 8px;
+    }
+
+    button {
+      width: 100%;
+      margin-top: 8px;
+      padding: 10px;
+      background: #38bdf8;
+      border: none;
+      border-radius: 8px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    button:hover {
+      opacity: 0.9;
+    }
+
+    .card {
+      background: #020617;
+      border: 1px solid #1e293b;
+      border-radius: 8px;
+      padding: 8px;
+      margin-bottom: 8px;
+      font-size: 12px;
+    }
+
+    .highlight {
+      border-color: #38bdf8;
+    }
+
+    .answer {
+      background: #020617;
+      border-radius: 8px;
+      padding: 12px;
+      border: 1px solid #22d3ee;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <h1>🧠 Visual RAG Playground</h1>
+    <p>Learn Retrieval-Augmented Generation step-by-step — visually.</p>
+
+    <div class="pipeline">
+
+      <!-- =========================
+           STEP 1: SOURCE + CHUNKING
+           ========================= -->
+      <div class="step active" id="step1">
+        <div class="step-title">1️⃣ Source → Chunks</div>
+        <div class="progress"><div class="progress-bar" id="p1"></div></div>
+
+        <textarea id="sourceText" rows="6" placeholder="Paste your source text here..."></textarea>
+        <input id="chunkSize" type="number" value="120" />
+
+        <button onclick="createChunks()">Create Chunks</button>
+        <div id="chunksPreview"></div>
+      </div>
+
+      <!-- =========================
+           STEP 2: EMBEDDINGS
+           ========================= -->
+      <div class="step" id="step2">
+        <div class="step-title">2️⃣ Vector Embeddings</div>
+        <div class="progress"><div class="progress-bar" id="p2"></div></div>
+
+        <div id="embeddingsPreview"></div>
+      </div>
+
+      <!-- =========================
+           STEP 3: USER QUERY
+           ========================= -->
+      <div class="step" id="step3">
+        <div class="step-title">3️⃣ User Query</div>
+        <div class="progress"><div class="progress-bar" id="p3"></div></div>
+
+        <input id="queryInput" placeholder="Ask something..." />
+        <button onclick="processQuery()">Search</button>
+      </div>
+
+      <!-- =========================
+           STEP 4: RETRIEVAL
+           ========================= -->
+      <div class="step" id="step4">
+        <div class="step-title">4️⃣ Top-K Retrieval</div>
+        <div class="progress"><div class="progress-bar" id="p4"></div></div>
+
+        <div id="retrievedChunks"></div>
+      </div>
+
+      <!-- =========================
+           STEP 5: LLM ANSWER
+           ========================= -->
+      <div class="step" id="step5">
+        <div class="step-title">5️⃣ LLM Answer</div>
+        <div class="progress"><div class="progress-bar" id="p5"></div></div>
+
+        <div id="finalAnswer"></div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- =========================
+       JAVASCRIPT LOGIC
+       ========================= -->
+  <script>
+    let chunks = [];
+    let embeddings = [];
+
+    /* =========================
+       SIMPLE EMBEDDING FUNCTION
+       (Simulates real embeddings)
+       ========================= */
+    function embed(text) {
+      // Convert characters to numeric values
+      return text
+        .toLowerCase()
+        .split("")
+        .map(c => c.charCodeAt(0) % 50);
+    }
+
+    /* =========================
+       COSINE SIMILARITY
+       ========================= */
+    function cosineSimilarity(a, b) {
+      let dot = 0, magA = 0, magB = 0;
+      for (let i = 0; i < Math.min(a.length, b.length); i++) {
+        dot += a[i] * b[i];
+        magA += a[i] ** 2;
+        magB += b[i] ** 2;
+      }
+      return dot / (Math.sqrt(magA) * Math.sqrt(magB));
+    }
+
+    /* =========================
+       STEP 1: CREATE CHUNKS
+       ========================= */
+    function createChunks() {
+      const text = sourceText.value;
+      const size = parseInt(chunkSize.value);
+
+      chunks = [];
+      for (let i = 0; i < text.length; i += size) {
+        chunks.push(text.slice(i, i + size));
+      }
+
+      chunksPreview.innerHTML = chunks
+        .map(c => `<div class="card">${c}</div>`)
+        .join("");
+
+      p1.style.width = "100%";
+      generateEmbeddings();
+    }
+
+    /* =========================
+       STEP 2: EMBEDDINGS
+       ========================= */
+    function generateEmbeddings() {
+      embeddings = chunks.map(c => embed(c));
+
+      embeddingsPreview.innerHTML = embeddings
+        .map((e, i) => `<div class="card">Chunk ${i + 1}: [${e.slice(0, 8)}...]</div>`)
+        .join("");
+
+      p2.style.width = "100%";
+      step2.classList.add("active");
+    }
+
+    /* =========================
+       STEP 3–4: QUERY + RETRIEVAL
+       ========================= */
+    function processQuery() {
+      const query = queryInput.value;
+      const queryEmbedding = embed(query);
+
+      const scored = embeddings.map((e, i) => ({
+        text: chunks[i],
+        score: cosineSimilarity(e, queryEmbedding)
+      }));
+
+      scored.sort((a, b) => b.score - a.score);
+
+      const topK = scored.slice(0, 2);
+
+      retrievedChunks.innerHTML = topK
+        .map(c => `<div class="card highlight">${c.text}</div>`)
+        .join("");
+
+      p3.style.width = "100%";
+      p4.style.width = "100%";
+      generateAnswer(topK, query);
+    }
+
+    /* =========================
+       STEP 5: ANSWER GENERATION
+       ========================= */
+    function generateAnswer(context, query) {
+      // Simulated LLM behavior
+      const combinedContext = context.map(c => c.text).join(" ");
+
+      finalAnswer.innerHTML = `
+        <div class="answer">
+          <strong>Answer:</strong><br/>
+          Based on the retrieved context, the system believes your query
+          <em>"${query}"</em> relates to:<br/><br/>
+          "${combinedContext.slice(0, 200)}..."
+        </div>
+      `;
+
+      p5.style.width = "100%";
+    }
+  </script>
+</body>
+</html>
