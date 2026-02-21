@@ -1,2 +1,2 @@
-# rag-hellopm
+# RAG
 Building my first RAG
